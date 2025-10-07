@@ -9,10 +9,11 @@ app = FastAPI()
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# simple blocklist example (for demo)
-blocked_domains = {"tempmail.com", "10minutemail.com", "guerrillamail.com"}
+# Simple blocklist for testing — we’ll replace later with full 70k+
+blocked_domains = {"tempmail.com", "10minutemail.com", "guerrillamail.com", "mailinator.com"}
 
 def is_valid_email(email: str) -> dict:
+    """Validates email format, domain, MX record, and blocklist"""
     try:
         valid = validate_email(email)
         email = valid.email
@@ -21,12 +22,12 @@ def is_valid_email(email: str) -> dict:
 
     domain = email.split('@')[-1]
     if domain in blocked_domains:
-        return {"valid": False, "reason": "Disposable email"}
+        return {"valid": False, "reason": "Disposable or temp email"}
 
     try:
         dns.resolver.resolve(domain, 'MX')
     except Exception:
-        return {"valid": False, "reason": "No MX record"}
+        return {"valid": False, "reason": "No MX record found"}
 
     return {"valid": True, "reason": "Valid email"}
 
