@@ -1,0 +1,8 @@
+{
+  "demo": {
+    "key": "demo_key_123",
+    "name": "Demo Client",
+    "limit": 100,
+    "usage": {}
+  }
+}
