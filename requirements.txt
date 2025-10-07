@@ -1,5 +1,6 @@
 fastapi
-uvicorn[standard]
-dnspython
+uvicorn
+gunicorn
 requests
-pydantic
+email-validator
+dnspython
