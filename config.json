@@ -1,0 +1,23 @@
+{
+  "require_api_key": true,
+  "rate_limit_per_day": 100,
+  "trusted_providers": [
+    "gmail.com",
+    "googlemail.com",
+    "outlook.com",
+    "hotmail.com",
+    "yahoo.com",
+    "icloud.com",
+    "protonmail.com",
+    "zoho.com",
+    "mail.com",
+    "yandex.com"
+  ],
+  "remote_blocklist_urls": [
+    "https://raw.githubusercontent.com/ashishnaikbackup-sketch/disposable-email-domains/refs/heads/master/domains.txt",
+    "https://raw.githubusercontent.com/ashishnaikbackup-sketch/disposable-email-domains1/refs/heads/main/disposable_email_blocklist.conf",
+    "https://raw.githubusercontent.com/disposable-email-domains/disposable-email-domains/master/domains.txt"
+  ],
+  "update_interval_seconds": 86400,
+  "mx_check_enabled": true
+}
