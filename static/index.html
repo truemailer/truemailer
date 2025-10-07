@@ -1,42 +1,58 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Truemailer Email Verifier</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Email Verifier</title>
   <style>
-    body { font-family: Arial, sans-serif; text-align: center; margin-top: 100px; }
-    input, button { padding: 10px; margin: 10px; font-size: 16px; }
+    body {
+      font-family: Arial, sans-serif;
+      background: #f5f6fa;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+    }
+    h1 { color: #333; }
+    form {
+      background: #fff;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+    input, button {
+      padding: 10px;
+      margin: 5px 0;
+      width: 250px;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+    }
+    button {
+      background: #4CAF50;
+      color: white;
+      cursor: pointer;
+    }
+    #result { margin-top: 10px; font-weight: bold; }
   </style>
 </head>
 <body>
-  <h1>Truemailer</h1>
-  <p>Check if an email is valid and trusted.</p>
-  <input type="email" id="email" placeholder="Enter email address">
-  <button onclick="verifyEmail()">Verify</button>
-  <p id="result"></p>
+  <h1>Truemailer – Email Verifier</h1>
+  <form id="verifyForm">
+    <input type="email" id="email" placeholder="Enter email" required />
+    <button type="submit">Verify</button>
+  </form>
+  <div id="result"></div>
 
   <script>
-    async function verifyEmail() {
+    document.getElementById("verifyForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
       const email = document.getElementById("email").value;
-      const result = document.getElementById("result");
-      result.innerText = "⏳ Verifying...";
-
-      const response = await fetch("/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email, api_key: "demo_key_123" })
-      });
-
-      if (!response.ok) {
-        result.innerText = "⚠️ Error: " + response.statusText;
-        return;
-      }
-
-      const data = await response.json();
-      result.innerHTML = data.valid
-        ? `<span style="color: green;">✅ Valid: ${data.reason}</span>`
-        : `<span style="color: red;">❌ Invalid: ${data.reason}</span>`;
-    }
+      const res = await fetch(`/verify?email=${encodeURIComponent(email)}`);
+      const data = await res.json();
+      document.getElementById("result").innerText =
+        data.valid ? "✅ " + data.reason : "❌ " + data.reason;
+    });
   </script>
 </body>
 </html>
