@@ -1,33 +1,33 @@
-from fastapi import FastAPI, Request, Form, Query
-from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
-import re
+from fastapi import FastAPI, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 import dns.resolver
-from email_validator import validate_email, EmailNotValidError
 
-app = FastAPI()
+app = FastAPI(title="Truemailer - Email Verifier")
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# Simple blocklist for testing — we’ll replace later with full 70k+
-blocked_domains = {"tempmail.com", "10minutemail.com", "guerrillamail.com", "mailinator.com"}
+@app.get("/")
+def read_index():
+    return FileResponse("static/index.html")
 
-def is_valid_email(email: str) -> dict:
-    """Validates email format, domain, MX record, and blocklist"""
-    try:
-        valid = validate_email(email)
-        email = valid.email
-    except EmailNotValidError:
+@app.get("/verify")
+def verify_email(email: str = Query(..., description="Email address to verify")):
+    if "@" not in email:
         return {"valid": False, "reason": "Invalid email format"}
 
-    domain = email.split('@')[-1]
-    if domain in blocked_domains:
-        return {"valid": False, "reason": "Disposable or temp email"}
-
+    domain = email.split("@")[-1]
     try:
-        dns.resolver.resolve(domain, 'MX')
+        dns.resolver.resolve(domain, "MX")
+        return {"valid": True, "reason": "Valid email domain"}
     except Exception:
-        return {"valid": False, "reason": "No MX record found"}
+        return {"valid": False, "reason": "Domain has no MX records"}
 
     return {"valid": True, "reason": "Valid email"}
 
