@@ -1,54 +1,44 @@
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import FastAPI, Request, Form, Query
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, EmailStr
-import dns.resolver, smtplib, socket, os, json
+import re
+import dns.resolver
+from email_validator import validate_email, EmailNotValidError
 
-app = FastAPI(title="Truemailer API", description="Verify emails easily", version="2.0")
+app = FastAPI()
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Serve frontend
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-@app.get("/")
-def home():
-    return FileResponse("static/index.html")
+# simple blocklist example (for demo)
+blocked_domains = {"tempmail.com", "10minutemail.com", "guerrillamail.com"}
 
-# -------------------------------
-# Email Verification Logic
-# -------------------------------
-class EmailRequest(BaseModel):
-    email: EmailStr
-    api_key: str | None = None
+def is_valid_email(email: str) -> dict:
+    try:
+        valid = validate_email(email)
+        email = valid.email
+    except EmailNotValidError:
+        return {"valid": False, "reason": "Invalid email format"}
+
+    domain = email.split('@')[-1]
+    if domain in blocked_domains:
+        return {"valid": False, "reason": "Disposable email"}
+
+    try:
+        dns.resolver.resolve(domain, 'MX')
+    except Exception:
+        return {"valid": False, "reason": "No MX record"}
+
+    return {"valid": True, "reason": "Valid email"}
+
+@app.get("/")
+async def index():
+    with open("static/index.html") as f:
+        return HTMLResponse(content=f.read())
+
+@app.get("/verify")
+async def verify_get(email: str = Query(...)):
+    return is_valid_email(email)
 
 @app.post("/verify")
-def verify_email(request: EmailRequest):
-    email = request.email
-    domain = email.split("@")[-1]
-
-    # Allow only known providers
-    trusted = ["gmail.com", "outlook.com", "yahoo.com", "protonmail.com"]
-    if domain not in trusted:
-        return {"valid": False, "reason": "Untrusted or temporary domain"}
-
-    try:
-        dns.resolver.resolve(domain, "MX")
-    except Exception:
-        return {"valid": False, "reason": "Domain has no MX records"}
-
-    try:
-        server = smtplib.SMTP(timeout=5)
-        server.connect("gmail-smtp-in.l.google.com")
-        server.quit()
-    except (socket.error, smtplib.SMTPException):
-        return {"valid": False, "reason": "SMTP connection failed"}
-
-    return {"valid": True, "reason": "Valid email address"}
+async def verify_post(email: str = Form(...)):
+    return is_valid_email(email)
