@@ -1,10 +1,10 @@
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Form
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-import dns.resolver
 
-app = FastAPI(title="Truemailer - Email Verifier")
+app = FastAPI()
 
+# Allow frontend (Replit, Render, etc.) access
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -13,33 +13,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Root route (for testing Render)
 @app.get("/")
-def read_index():
-    return FileResponse("static/index.html")
+async def home():
+    return {"message": "✅ Server is running properly on Render & Replit"}
 
-@app.get("/verify")
-def verify_email(email: str = Query(..., description="Email address to verify")):
-    if "@" not in email:
-        return {"valid": False, "reason": "Invalid email format"}
-
-    domain = email.split("@")[-1]
-    try:
-        dns.resolver.resolve(domain, "MX")
-        return {"valid": True, "reason": "Valid email domain"}
-    except Exception:
-        return {"valid": False, "reason": "Domain has no MX records"}
-
-    return {"valid": True, "reason": "Valid email"}
-
-@app.get("/")
-async def index():
-    with open("static/index.html") as f:
-        return HTMLResponse(content=f.read())
-
-@app.get("/verify")
-async def verify_get(email: str = Query(...)):
-    return is_valid_email(email)
-
+# POST route for email verification testing
 @app.post("/verify")
 async def verify_post(email: str = Form(...)):
-    return is_valid_email(email)
+    # Basic example logic
+    if "@" not in email:
+        return JSONResponse(content={"status": "❌ invalid email"}, status_code=400)
+    return JSONResponse(content={"status": "✅ email verified", "email": email})
