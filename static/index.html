@@ -14,21 +14,39 @@
   <p id="response" style="margin-top:20px;"></p>
 
   <script>
-  document.getElementById("verifyForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
+async function verifyEmail() {
+  const email = document.getElementById("email").value.trim();
+  const resultBox = document.getElementById("result");
 
-    const formData = new FormData();
-    formData.append("email", document.getElementById("email").value);
+  if (!email) {
+    resultBox.textContent = "⚠️ Please enter an email address";
+    return;
+  }
 
-    // ⚠️ Replace the link below with your RENDER URL
+  resultBox.textContent = "⏳ Verifying...";
+
+  try {
     const response = await fetch("https://truemailer-api.onrender.com/verify", {
       method: "POST",
-      body: formData,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
     });
 
     const data = await response.json();
-    document.getElementById("response").innerText = data.status || "❌ Error";
-  });
+
+    if (response.ok) {
+      if (data.valid) {
+        resultBox.textContent = `✅ ${email} is valid`;
+      } else {
+        resultBox.textContent = `❌ ${email} is invalid or disposable`;
+      }
+    } else {
+      resultBox.textContent = `⚠️ Error: ${data.detail || "Something went wrong"}`;
+    }
+  } catch (error) {
+    resultBox.textContent = `⚠️ Network error: ${error.message}`;
+  }
+}
   </script>
 </body>
 </html>
