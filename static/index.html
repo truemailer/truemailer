@@ -3,56 +3,32 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Email Verifier</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #f5f6fa;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-    }
-    h1 { color: #333; }
-    form {
-      background: #fff;
-      padding: 20px;
-      border-radius: 10px;
-      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-    }
-    input, button {
-      padding: 10px;
-      margin: 5px 0;
-      width: 250px;
-      border-radius: 5px;
-      border: 1px solid #ccc;
-    }
-    button {
-      background: #4CAF50;
-      color: white;
-      cursor: pointer;
-    }
-    #result { margin-top: 10px; font-weight: bold; }
-  </style>
+  <title>Email Verification</title>
 </head>
-<body>
-  <h1>Truemailer – Email Verifier</h1>
+<body style="font-family: sans-serif; text-align: center; padding: 40px;">
+  <h2>Email Verification Test</h2>
   <form id="verifyForm">
-    <input type="email" id="email" placeholder="Enter email" required />
-    <button type="submit">Verify</button>
+    <input type="email" id="email" placeholder="Enter your email" required style="padding:8px; width:250px;">
+    <button type="submit" style="padding:8px 16px;">Verify</button>
   </form>
-  <div id="result"></div>
+  <p id="response" style="margin-top:20px;"></p>
 
   <script>
-    document.getElementById("verifyForm").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const email = document.getElementById("email").value;
-      const res = await fetch(`/verify?email=${encodeURIComponent(email)}`);
-      const data = await res.json();
-      document.getElementById("result").innerText =
-        data.valid ? "✅ " + data.reason : "❌ " + data.reason;
+  document.getElementById("verifyForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const formData = new FormData();
+    formData.append("email", document.getElementById("email").value);
+
+    // ⚠️ Replace the link below with your RENDER URL
+    const response = await fetch("https://truemailer-api.onrender.com/verify", {
+      method: "POST",
+      body: formData,
     });
+
+    const data = await response.json();
+    document.getElementById("response").innerText = data.status || "❌ Error";
+  });
   </script>
 </body>
 </html>
