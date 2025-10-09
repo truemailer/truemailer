@@ -1,52 +1,29 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Email Verification</title>
-</head>
-<body style="font-family: sans-serif; text-align: center; padding: 40px;">
-  <h2>Email Verification Test</h2>
-  <form id="verifyForm">
-    <input type="email" id="email" placeholder="Enter your email" required style="padding:8px; width:250px;">
-    <button type="submit" style="padding:8px 16px;">Verify</button>
-  </form>
-  <p id="response" style="margin-top:20px;"></p>
-
-  <script>
-async function verifyEmail() {
-  const email = document.getElementById("email").value.trim();
-  const resultBox = document.getElementById("result");
-
-  if (!email) {
-    resultBox.textContent = "⚠️ Please enter an email address";
-    return;
-  }
-
-  resultBox.textContent = "⏳ Verifying...";
-
-  try {
-    const response = await fetch("https://truemailer-api.onrender.com/verify", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
-    });
-
-    const data = await response.json();
-
-    if (response.ok) {
-      if (data.valid) {
-        resultBox.textContent = `✅ ${email} is valid`;
-      } else {
-        resultBox.textContent = `❌ ${email} is invalid or disposable`;
-      }
-    } else {
-      resultBox.textContent = `⚠️ Error: ${data.detail || "Something went wrong"}`;
-    }
-  } catch (error) {
-    resultBox.textContent = `⚠️ Network error: ${error.message}`;
-  }
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Truemailer — Demo</title>
+<style>
+body{font-family:Arial,Helvetica,sans-serif;background:#f6f8fa;color:#0b1226;padding:24px}
+.card{max-width:720px;margin:20px auto;background:#fff;padding:20px;border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,0.06)}
+input,button{padding:10px 12px;font-size:16px;border-radius:6px;border:1px solid #ddd}
+button{background:#0b79f7;color:#fff;border:0;margin-left:8px}
+pre{background:#f3f4f6;padding:12px;border-radius:6px}
+</style></head><body>
+<div class="card"><h2>Truemailer — Email Verifier (Demo)</h2><p>Enter email and API key (demo: <strong>demo_key_123</strong>)</p>
+<input id="email" placeholder="someone@example.com" style="width:60%"><input id="key" placeholder="API key (demo_key_123)" style="width:30%;margin-left:8px">
+<button onclick="verify()">Verify</button><pre id="out"></pre></div>
+<script>
+async function verify(){
+  const out=document.getElementById("out");
+  const email=document.getElementById("email").value;
+  const key=document.getElementById("key").value;
+  out.textContent='Checking...';
+  try{
+    const form = new FormData();
+    form.append('email', email);
+    form.append('api_key', key);
+    const res = await fetch('/verify', { method: 'POST', body: form });
+    const j = await res.json();
+    out.textContent = JSON.stringify(j, null, 2);
+  }catch(e){ out.textContent = 'Error: '+e.message }
 }
-  </script>
-</body>
-</html>
+</script></body></html>
