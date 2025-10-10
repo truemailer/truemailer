@@ -1,12 +1,11 @@
-# main.py - Truemailer (Full version)
-# Features:
-# - API key auth (clients.json)
-# - Per-key daily rate limits (persisted)
-# - Disposable domain blocklist check (blocklist/blocklist.txt + remote merge)
-# - MX check (dnspython)
-# - GET and POST /verify endpoints
-# - Background updater (24h), and manual /update-now trigger
-# - /status for quick health
+# main.py - Truemailer (Full production-ready verifier)
+# - API keys (clients.json)
+# - Per-key daily limits (persisted)
+# - Trusted-provider allowlist
+# - Disposable blocklist (local + remote merge)
+# - MX checks (dnspython)
+# - GET & POST /verify, /update-now (manual), /status
+# - Background updater every 24h
 
 import os
 import json
@@ -22,22 +21,21 @@ from fastapi import FastAPI, HTTPException, Request, Form, Query
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-# ---------- Config & file paths ----------
-APP_NAME = "Truemailer"
+# ---------- File paths ----------
 CONFIG_FILE = "config.json"
 CLIENTS_FILE = "clients.json"
 BLOCKLIST_TXT = os.path.join("blocklist", "blocklist.txt")
 
-# Default config (written to config.json if not present)
+# ---------- Default configuration ----------
 DEFAULT_CONFIG = {
     "require_api_key": True,
     "rate_limit_per_day": 100,
     "trusted_providers": [
         "gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "yahoo.com",
-        "icloud.com", "protonmail.com", "zoho.com", "mail.com", "yandex.com"
+        "icloud.com", "protonmail.com", "zoho.com", "mail.com", "yandex.com",
+        "aol.com", "gmx.com", "fastmail.com", "tutanota.com"
     ],
     "remote_blocklist_urls": [
-        # your two forks + public repo
         "https://raw.githubusercontent.com/ashishnaikbackup-sketch/disposable-email-domains/refs/heads/master/domains.txt",
         "https://raw.githubusercontent.com/ashishnaikbackup-sketch/disposable-email-domains1/refs/heads/main/disposable_email_blocklist.conf",
         "https://raw.githubusercontent.com/disposable-email-domains/disposable-email-domains/master/domains.txt"
@@ -46,15 +44,15 @@ DEFAULT_CONFIG = {
     "mx_check_enabled": True
 }
 
-# ---------- Utils: load/save config & clients ----------
-def load_json_file(path, default):
+# ---------- Helpers to read/write JSON ----------
+def load_json(path, default):
     if os.path.exists(path):
         try:
             with open(path, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
             pass
-    # write default if not exist
+    # write default on missing
     try:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(default, f, indent=2)
@@ -62,19 +60,23 @@ def load_json_file(path, default):
         pass
     return default.copy()
 
-CONFIG = load_json_file(CONFIG_FILE, DEFAULT_CONFIG)
-CLIENTS = load_json_file(CLIENTS_FILE, {
+def save_json(path, data):
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except Exception:
+        pass
+
+# ---------- Load config & clients ----------
+CONFIG = load_json(CONFIG_FILE, DEFAULT_CONFIG)
+CLIENTS = load_json(CLIENTS_FILE, {
     "demo": {"key": "demo_key_123", "name": "Demo Client", "limit": CONFIG.get("rate_limit_per_day", 100), "usage": {}}
 })
 
 def save_clients():
-    try:
-        with open(CLIENTS_FILE, "w", encoding="utf-8") as f:
-            json.dump(CLIENTS, f, indent=2)
-    except Exception:
-        pass
+    save_json(CLIENTS_FILE, CLIENTS)
 
-# ---------- Blocklist handling (in-memory set) ----------
+# ---------- Blocklist (in memory) ----------
 BLOCKSET = set()
 BLOCKSET_LOCK = threading.Lock()
 
@@ -87,7 +89,6 @@ def load_local_blocklist():
                     ln = ln.strip().lower()
                     if not ln or ln.startswith("#"):
                         continue
-                    # handle entries that may include local-part@domain
                     if "@" in ln and ln.count("@") == 1:
                         ln = ln.split("@", 1)[1]
                     s.add(ln)
@@ -119,9 +120,7 @@ def fetch_and_merge_remote():
                         ln = ln.split("@", 1)[1]
                     domains.add(ln.lower())
         except Exception:
-            # ignore per-source failures
             continue
-    # include local extras
     local = load_local_blocklist()
     domains.update(local)
     save_blocklist(domains)
@@ -134,34 +133,36 @@ def refresh_blockset():
         BLOCKSET = set(new)
     return len(BLOCKSET)
 
-# try initial load (best-effort)
+# initial load (best-effort)
 try:
     BLOCKSET = load_local_blocklist()
-    # start a background thread to fetch remote lists without blocking startup
+    # do an async remote fetch in background so startup isn't blocked
     threading.Thread(target=refresh_blockset, daemon=True).start()
 except Exception:
     BLOCKSET = set()
 
-# background updater thread
+# background updater
 def updater_loop():
     interval = CONFIG.get("update_interval_seconds", 24 * 3600)
     while True:
         try:
-            refreshed = refresh_blockset()
-            print(f"[updater] refreshed blockset; {refreshed} domains")
+            count = refresh_blockset()
+            print(f"[updater] blocklist refreshed: {count} domains")
         except Exception as e:
-            print("[updater] error refreshing:", e)
+            print("[updater] error:", e)
         time.sleep(interval)
 
 threading.Thread(target=updater_loop, daemon=True).start()
 
 # ---------- FastAPI app ----------
-app = FastAPI(title=APP_NAME)
+from fastapi import FastAPI
+app = FastAPI(title="Truemailer")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"], allow_credentials=True)
 
-# helper regex for basic syntax check (fast)
+# email regex (fast & permissive)
 EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,255}$")
 
+# helper client functions
 def get_client_by_key(key: str):
     for cid, info in CLIENTS.items():
         if info.get("key") == key:
@@ -178,7 +179,6 @@ def check_and_consume_quota(client_id: str):
     if cnt >= client.get("limit", CONFIG.get("rate_limit_per_day", 100)):
         return False, "daily limit exceeded"
     usage[now_day] = cnt + 1
-    # persist small write
     save_clients()
     return True, None
 
@@ -200,7 +200,7 @@ def home():
     p = os.path.join("static", "index.html")
     if os.path.exists(p):
         return FileResponse(p)
-    return JSONResponse({"message": "Truemailer is running. Use /verify"}, status_code=200)
+    return JSONResponse({"message": "Truemailer running. Use /verify"}, status_code=200)
 
 @app.get("/status")
 def status():
@@ -210,7 +210,7 @@ def status():
 def update_now(trigger_key: Optional[str] = Form(None)):
     """
     Manual trigger to refresh the blocklist now.
-    If you provide a trigger_key, it must be a valid client key (optional).
+    Optional trigger_key must be a valid client key (if provided).
     """
     if trigger_key:
         cid, info = get_client_by_key(trigger_key)
@@ -221,11 +221,7 @@ def update_now(trigger_key: Optional[str] = Form(None)):
 
 @app.get("/verify")
 def verify_get(email: str = Query(..., description="Email to verify"), api_key: Optional[str] = Query(None)):
-    """
-    GET /verify?email=someone@domain.tld&api_key=KEY
-    Useful for quick browser testing.
-    """
-    # required api key enforcement
+    # Auth & quota
     if CONFIG.get("require_api_key", True):
         key = api_key
         if not key:
@@ -239,36 +235,34 @@ def verify_get(email: str = Query(..., description="Email to verify"), api_key: 
     else:
         cid = "anonymous"
 
-    email = email.strip()
+    email = (email or "").strip()
     if not EMAIL_RE.match(email):
         return JSONResponse({"email": email, "valid": False, "reason": "invalid_syntax"})
 
     domain = domain_from_email(email)
 
-    # trusted provider quick-pass
+    # trusted provider allowlist
     if domain in CONFIG.get("trusted_providers", []):
         mx = has_mx(domain)
         return JSONResponse({"email": email, "valid": True, "reason": "trusted_provider", "disposable": False, "mx": mx, "provider": domain})
 
-    # check blocklist
+    # disposable check
     with BLOCKSET_LOCK:
         is_disposable = domain in BLOCKSET
 
     if is_disposable:
         return JSONResponse({"email": email, "valid": False, "reason": "disposable_domain", "disposable": True})
 
-    # mx check
+    # MX check fallback
     mx = has_mx(domain)
     if not mx:
         return JSONResponse({"email": email, "valid": False, "reason": "no_mx", "disposable": False, "mx": False})
+
     return JSONResponse({"email": email, "valid": True, "reason": "valid", "disposable": False, "mx": True, "provider": domain})
 
 @app.post("/verify")
 def verify_post(email: str = Form(...), api_key: Optional[str] = Form(None)):
-    """
-    POST /verify (form-data) - used by demo UI.
-    Form fields: email, api_key
-    """
+    # Auth & quota
     if CONFIG.get("require_api_key", True):
         key = api_key
         if not key:
@@ -305,24 +299,20 @@ def verify_post(email: str = Form(...), api_key: Optional[str] = Form(None)):
 
     return JSONResponse({"email": email, "valid": True, "reason": "valid", "disposable": False, "mx": True, "provider": domain})
 
-# ---------- Startup event: ensure blockset loaded ----------
+# ---------- Startup: ensure blocklist available ----------
 @app.on_event("startup")
 def on_startup():
-    # ensure blocklist exists locally (updater can create)
-    if not os.path.exists(BLOCKLIST_TXT):
-        try:
-            # attempt a one-time fetch synchronously so first run has something
-            refreshed = fetch_and_merge_remote()
-            print(f"[startup] fetched {len(refreshed)} domains")
-        except Exception as e:
-            print("[startup] failed initial fetch:", e)
-    else:
-        # load the local file to memory
+    # load local blocklist if present; otherwise try one-time fetch
+    if os.path.exists(BLOCKLIST_TXT):
         try:
             global BLOCKSET
             BLOCKSET = load_local_blocklist()
             print(f"[startup] loaded {len(BLOCKSET)} local blocklist entries")
         except Exception:
-            BLOCKSET = set()
-
-# ---------- End of main.py ----------
+            pass
+    else:
+        try:
+            refreshed = fetch_and_merge_remote()
+            print(f"[startup] fetched {len(refreshed)} domains")
+        except Exception as e:
+            print("[startup] initial fetch failed:", e)
