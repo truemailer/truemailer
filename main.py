@@ -1,139 +1,122 @@
-from fastapi import FastAPI, Form
-from fastapi.responses import JSONResponse, HTMLResponse
-from fastapi.middleware.cors import CORSMiddleware
-from pathlib import Path
-import aiohttp
-import asyncio
-import os
-import re
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 import dns.resolver
+import re
+import datetime
+import os
 
-app = FastAPI(title="Truemailer API", version="2.0")
+app = Flask(__name__)
+CORS(app)
 
-# CORS setup
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# -------------------------------
+# CONFIG
+# -------------------------------
 
-# File paths
-BASE_DIR = Path(__file__).resolve().parent
-BLOCKLIST_FILE = BASE_DIR / "blocklist" / "blocklist.txt"
-os.makedirs(BLOCKLIST_FILE.parent, exist_ok=True)
+API_KEYS = {
+    "demo-key": {"limit": 100, "used": 0},
+    "ashish-key": {"limit": 10000, "used": 0},
+}
 
-# Blocklist sources
-REMOTE_URLS = [
-    "https://raw.githubusercontent.com/disposable-email-domains/disposable-email-domains/master/domains.txt",
-    "https://raw.githubusercontent.com/ivolo/disposable-email-domains/master/index.json",
-    "https://raw.githubusercontent.com/andreis/disposable-email-domains/master/domains.txt",
+# Trusted domains
+TRUSTED_DOMAINS = [
+    "gmail.com", "outlook.com", "hotmail.com", "yahoo.com", "protonmail.com",
+    "zoho.com", "icloud.com", "mail.com", "gmx.com", "tutanota.com"
 ]
 
-# Trusted email providers (always valid)
-TRUSTED_PROVIDERS = [
-    "gmail.com", "outlook.com", "hotmail.com", "yahoo.com",
-    "icloud.com", "protonmail.com", "zoho.com", "yandex.com", "aol.com"
+# Disposable email domain list (add more here)
+DISPOSABLE_DOMAINS = [
+    "tempmail.com", "10minutemail.com", "guerrillamail.com", "gta5hx.com",
+    "mailinator.com", "inilas.com", "forexzig.com", "sharklasers.com",
+    "yopmail.com", "getnada.com", "trashmail.com"
 ]
 
-blocklist = set()
+# -------------------------------
+# FUNCTIONS
+# -------------------------------
 
-# ----------------------- UTILITIES -----------------------
-async def fetch_blocklists():
-    global blocklist
-    merged = set()
-    async with aiohttp.ClientSession() as session:
-        for url in REMOTE_URLS:
-            try:
-                async with session.get(url) as resp:
-                    if resp.status == 200:
-                        text = await resp.text()
-                        domains = re.findall(r"[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", text)
-                        merged.update([d.strip().lower() for d in domains])
-                        print(f"✅ Loaded {len(domains)} domains from {url}")
-            except Exception as e:
-                print(f"⚠️ Failed to fetch from {url}: {e}")
+def is_valid_email(email):
+    """Basic email format validation"""
+    pattern = r'^[^@\s]+@[^@\s]+\.[a-zA-Z0-9]+$'
+    return re.match(pattern, email)
 
-    blocklist = merged
-    with open(BLOCKLIST_FILE, "w") as f:
-        f.write("\n".join(sorted(merged)))
-    print(f"💾 Saved total {len(merged)} domains to {BLOCKLIST_FILE}")
-
-
-def load_local_blocklist():
-    global blocklist
-    if BLOCKLIST_FILE.exists():
-        with open(BLOCKLIST_FILE, "r") as f:
-            blocklist = set(line.strip().lower() for line in f if line.strip())
-            print(f"📦 Loaded {len(blocklist)} domains from local blocklist")
-
-
-def domain_has_mx(domain: str) -> bool:
+def check_mx_record(domain):
+    """Check if domain has MX record"""
     try:
-        dns.resolver.resolve(domain, "MX")
+        dns.resolver.resolve(domain, 'MX')
         return True
-    except Exception:
+    except:
         return False
 
-
-# ----------------------- VERIFICATION -----------------------
-@app.on_event("startup")
-async def startup_event():
-    if not BLOCKLIST_FILE.exists() or os.path.getsize(BLOCKLIST_FILE) < 10000:
-        await fetch_blocklists()
+def classify_email(email):
+    """Classify the email as trusted, disposable, or unknown"""
+    domain = email.split('@')[-1].lower()
+    if domain in TRUSTED_DOMAINS:
+        return "trusted"
+    elif domain in DISPOSABLE_DOMAINS:
+        return "disposable"
+    elif check_mx_record(domain):
+        return "valid"
     else:
-        load_local_blocklist()
+        return "invalid"
 
+# -------------------------------
+# ROUTES
+# -------------------------------
 
-def check_disposable(domain: str) -> bool:
-    domain = domain.lower()
-    if domain in blocklist:
-        return True
+@app.route('/')
+def home():
+    return jsonify({"message": "✅ Email verification API is running!"})
 
-    # Pattern-based detection
-    suspect_patterns = ["mail", "inbox", "temp", "trash", "airmail", "guerrillamail", "dispostable", "gta5", "forex"]
-    if any(p in domain for p in suspect_patterns):
-        return True
+@app.route('/verify', methods=['POST'])
+def verify_email():
+    try:
+        api_key = request.headers.get('X-API-Key')
+        if not api_key or api_key not in API_KEYS:
+            return jsonify({"error": "Invalid or missing API key"}), 403
 
-    return False
+        client = API_KEYS[api_key]
+        if client['used'] >= client['limit']:
+            return jsonify({"error": "API limit exceeded"}), 429
 
+        data = request.get_json()
+        email = data.get('email', '').strip().lower()
 
-@app.get("/")
-async def home():
-    return {"message": "✅ Server is running properly on Render & Replit"}
+        if not is_valid_email(email):
+            return jsonify({"email": email, "valid": False, "reason": "invalid_format"}), 400
 
+        result = classify_email(email)
+        domain = email.split('@')[-1]
 
-@app.get("/verify")
-async def verify_get(email: str):
-    if "@" not in email:
-        return JSONResponse({"email": email, "valid": False, "reason": "invalid_format"})
+        response = {
+            "email": email,
+            "domain": domain,
+            "classification": result,
+            "checked_on": datetime.datetime.utcnow().isoformat() + "Z"
+        }
 
-    domain = email.split("@")[-1].lower()
+        client['used'] += 1
+        print(f"[{datetime.datetime.now()}] {email} -> {result}")
 
-    if domain in TRUSTED_PROVIDERS:
-        return JSONResponse({"email": email, "valid": True, "reason": "trusted_provider"})
+        return jsonify(response)
 
-    disposable = check_disposable(domain)
-    mx = domain_has_mx(domain)
+    except Exception as e:
+        print("Error:", e)
+        return jsonify({"error": str(e)}), 500
 
-    if disposable:
-        return JSONResponse({"email": email, "valid": False, "reason": "disposable_domain", "mx": mx})
-    elif not mx:
-        return JSONResponse({"email": email, "valid": False, "reason": "no_mx_record"})
-    else:
-        return JSONResponse({"email": email, "valid": True, "reason": "valid", "mx": True})
+@app.route('/status', methods=['GET'])
+def status():
+    return jsonify({
+        "message": "✅ Server is running properly",
+        "render": os.getenv('RENDER', 'false'),
+        "replit": os.getenv('REPLIT', 'false'),
+        "keys_active": len(API_KEYS)
+    })
 
+# -------------------------------
+# START SERVER
+# -------------------------------
 
-@app.post("/verify")
-async def verify_post(email: str = Form(...)):
-    return await verify_get(email=email)
-
-
-@app.get("/status")
-async def status():
-    return {
-        "status": "running",
-        "loaded_domains": len(blocklist),
-        "source_count": len(REMOTE_URLS),
-        "trusted_providers": len(TRUSTED_PROVIDERS)
-                            }
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    print(f"🚀 Server running on port {port}")
+    app.run(host='0.0.0.0', port=port)
