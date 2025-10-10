@@ -4,3 +4,5 @@ gunicorn
 requests
 dnspython
 python-multipart
+flask
+flask-cors
