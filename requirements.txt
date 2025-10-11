@@ -1,8 +1,5 @@
-fastapi
-uvicorn[standard]
-gunicorn
-requests
+Flask
+Flask-Cors
 dnspython
-python-multipart
-flask
-flask-cors
+requests
+gunicorn
