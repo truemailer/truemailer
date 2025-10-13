@@ -1,8 +1,8 @@
 # auto_updater.py
 import requests, json, time, os
 
-DATA_URL = "https://raw.githubusercontent.com/<yourusername>/<yourrepo>/main/public_blocklist.json"
-KEYS_URL = "https://raw.githubusercontent.com/<yourusername>/<yourrepo>/main/keys.json"
+DATA_URL = "https://raw.githubusercontent.com/<truemailer>/<truemailer>/main/public_blocklist.json"
+KEYS_URL = "https://raw.githubusercontent.com/<truemailer>/<truemailer>/main/keys.json"
 
 def auto_update():
     try:
