@@ -2,7 +2,10 @@
   "demo": {
     "key": "demo_key_123",
     "name": "Demo Client",
+    "plan": "demo",
     "limit": 100,
+    "calls": 0,
+    "last_used": 0,
     "usage": {}
   }
 }
