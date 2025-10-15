@@ -1,40 +1,64 @@
 # api_gate.py
 from flask import Flask, request, jsonify
-import json, time, subprocess
+import json, time, subprocess, os
 
 app = Flask(__name__)
 
-def load_keys():
-    with open("keys.json", "r") as f:
-        return json.load(f)
+def load_json(filename):
+    if os.path.exists(filename):
+        with open(filename, "r") as f:
+            return json.load(f)
+    return {}
 
+def save_json(filename, data):
+    with open(filename, "w") as f:
+        json.dump(data, f, indent=2)
+
+# --- Check if key valid ---
 def valid_key(api_key):
-    keys = load_keys()
-    for client, data in keys.items():
-        if data["key"] == api_key and time.time() < data["expiry"]:
-            return True
-    return False
+    clients = load_json("client.json")
+    for client_name, info in clients.items():
+        if info.get("key") == api_key:
+            # simple expiry rule for demo — can extend later
+            return client_name, True
+    return None, False
+
+# --- Log usage ---
+def log_usage(client_name):
+    clients = load_json("client.json")
+    client = clients.get(client_name, {})
+    client["calls"] = client.get("calls", 0) + 1
+    client["last_used"] = int(time.time())
+    clients[client_name] = client
+    save_json("client.json", clients)
 
 @app.route("/api/check", methods=["POST"])
 def api_entry():
     api_key = request.headers.get("X-API-Key")
-    if not valid_key(api_key):
+    client_name, is_valid = valid_key(api_key)
+
+    if not is_valid:
         return jsonify({"error": "Invalid or expired API key"}), 403
 
-    # ✅ If valid, forward to your main backend
     email = request.json.get("email")
+    if not email:
+        return jsonify({"error": "Missing email"}), 400
 
-    # Example: use subprocess to call your main.py as a command line checker
-    # Replace with your actual check logic if you have a function import
+    log_usage(client_name)
+
     try:
         result = subprocess.run(
             ["python3", "main.py", email],
-            capture_output=True, text=True
+            capture_output=True,
+            text=True
         )
-        return jsonify({"result": result.stdout.strip()})
+        return jsonify({
+            "client": client_name,
+            "email_checked": email,
+            "result": result.stdout.strip()
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
