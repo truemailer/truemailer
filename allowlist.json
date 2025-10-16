@@ -8,10 +8,6 @@
     "icloud.com",
     "me.com",
     "aol.com",
-    "protonmail.com",
-    "proton.me",
-    "zoho.com",
-    "zoho.in",
     "mail.com",
     "gmx.com",
     "gmx.net",
@@ -23,5 +19,13 @@
     "inbox.lv",
     "rediffmail.com",
     "hushmail.com"
+    "zoho.com",
+    "zoho.in",
+    "protonmail.com",
+    "proton.me",
+    "edu.in",
+    "ac.in",
+    "gec.ac.in",
+    }
   ]
 }
