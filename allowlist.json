@@ -1,31 +1,16 @@
-{
-  "trusted_domains": [
-    "gmail.com",
-    "yahoo.com",
-    "outlook.com",
-    "hotmail.com",
-    "live.com",
-    "icloud.com",
-    "me.com",
-    "aol.com",
-    "mail.com",
-    "gmx.com",
-    "gmx.net",
-    "yandex.com",
-    "fastmail.com",
-    "pm.me",
-    "hey.com",
-    "tutanota.com",
-    "inbox.lv",
-    "rediffmail.com",
-    "hushmail.com"
-    "zoho.com",
-    "zoho.in",
-    "protonmail.com",
-    "proton.me",
-    "edu.in",
-    "ac.in",
-    "gec.ac.in",
-    }
-  ]
-}
+const allowlist = [
+  "gmail.com",
+  "yahoo.com",
+  "outlook.com",
+  "hotmail.com",
+  "zoho.in",
+  "zoho.com",
+  "proton.me",
+  "protonmail.com",
+  "icloud.com",
+  "gec.ac.in",
+  "ashusgallery.in",     // your own domain
+  "company.co",          // small startup
+  "startupindia.gov.in"  // govt / edu
+  "edu.in"
+];
