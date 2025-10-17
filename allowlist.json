@@ -1,16 +1,13 @@
-const allowlist = [
+[
   "gmail.com",
   "yahoo.com",
   "outlook.com",
   "hotmail.com",
-  "zoho.in",
-  "zoho.com",
-  "proton.me",
-  "protonmail.com",
   "icloud.com",
+  "zoho.com",
+  "zoho.in",
+  "protonmail.com",
+  "proton.me",
   "gec.ac.in",
-  "ashusgallery.in",     // your own domain
-  "company.co",          // small startup
-  "startupindia.gov.in"  // govt / edu
   "edu.in"
-];
+]
