@@ -11,15 +11,26 @@ for u in urls:
     try:
         r = requests.get(u, timeout=30)
         if r.status_code == 200:
-            for ln in r.text.splitlines():
-                ln = ln.strip()
-                if not ln or ln.startswith("#"): continue
-                if "@" in ln and ln.count("@") == 1:
-                    ln = ln.split("@",1)[1]
-                out.add(ln.lower())
+            txt = r.text
+            if txt.strip().startswith("["):
+                import json
+                try:
+                    arr = json.loads(txt)
+                    for a in arr:
+                        if isinstance(a,str):
+                            out.add(a.strip().lower())
+                except:
+                    pass
+            else:
+                for ln in txt.splitlines():
+                    ln = ln.strip()
+                    if not ln or ln.startswith("#"): continue
+                    if "@" in ln and ln.count("@") == 1:
+                        ln = ln.split("@",1)[1]
+                    out.add(ln.lower())
     except Exception as e:
         print("fail", u, e)
 with open("blocklist/blocklist.txt","w",encoding="utf-8") as f:
     for d in sorted(out):
-        f.write(d + "\\n")
+        f.write(d + "\n")
 print("wrote", len(out))
