@@ -7,3 +7,4 @@ fastapi
 uvicorn
 dnspython
 pydantic
+requests
