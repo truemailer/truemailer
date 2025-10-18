@@ -3,31 +3,47 @@ import re
 import requests
 from flask import Flask, request, jsonify
 
+# -----------------------------------------------------------
+# Truemailer API — Final Stable Version (Render + Cloudflare)
+# -----------------------------------------------------------
+# Author: Ashish
+# Description:
+# This API verifies emails by:
+# - Checking syntax validity
+# - Using allowlist and blocklist
+# - Matching against GitHub remote blocklist-data
+# - Filtering temporary/disposable patterns
+# -----------------------------------------------------------
+
 app = Flask(__name__)
 
-# Load configuration
+# Load Configuration
 with open("config.json", "r") as f:
     CONFIG = json.load(f)
 
-# Load blocklist and allowlist
-try:
-    with open("blocklist.json", "r") as f:
-        BLOCKLIST = set(json.load(f))
-except:
-    BLOCKLIST = set()
+# Load Blocklist and Allowlist
+def load_json_file(filename):
+    try:
+        with open(filename, "r") as f:
+            return set(json.load(f))
+    except Exception:
+        return set()
 
-try:
-    with open("allowlist.json", "r") as f:
-        ALLOWLIST = set(json.load(f))
-except:
-    ALLOWLIST = set()
+ALLOWLIST = load_json_file("allowlist.json")
+BLOCKLIST = load_json_file("blocklist.json")
 
-# Basic email pattern
+# Email validation regex
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
 
 @app.route("/")
 def index():
-    return jsonify({"status": "OK", "message": "Truemailer API live"})
+    return jsonify({
+        "project": CONFIG.get("project_name", "Truemailer"),
+        "status": "Active",
+        "message": "Truemailer API is running successfully"
+    })
+
 
 @app.route("/verify", methods=["POST"])
 def verify_email():
@@ -36,53 +52,59 @@ def verify_email():
         return jsonify({"error": "email required"}), 400
 
     email = data["email"].lower().strip()
+
+    # Step 1: Syntax check
     if not EMAIL_PATTERN.match(email):
-        return jsonify({"valid": False, "reason": "Invalid email format"})
+        return jsonify({"email": email, "valid": False, "reason": "Invalid format"})
 
     domain = email.split("@")[1]
 
-    # Allowlist check
+    # Step 2: Allowlist check
     if domain in ALLOWLIST:
         return jsonify({
             "email": email,
             "domain": domain,
             "valid": True,
-            "reason": "Domain in allowlist"
+            "reason": "Allowed domain"
         })
 
-    # Blocklist check
+    # Step 3: Blocklist check (local)
     if domain in BLOCKLIST:
         return jsonify({
             "email": email,
             "domain": domain,
             "valid": False,
-            "reason": "Temporary or blocked domain"
+            "reason": "Blocked domain (local)"
         })
 
-    # Remote check via GitHub Blocklist Data (Verifalia-style)
+    # Step 4: Remote GitHub blocklist lookup
     try:
-        gh_data = requests.get(
-            CONFIG["blocklist_source"], timeout=5
-        ).text.lower()
-        if domain in gh_data:
+        resp = requests.get(CONFIG["blocklist_source"], timeout=5)
+        if resp.status_code == 200 and domain in resp.text.lower():
             return jsonify({
                 "email": email,
                 "domain": domain,
                 "valid": False,
-                "reason": "Detected in blocklist-data"
+                "reason": "Blocked domain (remote)"
             })
     except Exception:
         pass
 
-    # Generic pattern-based detection (for tempmail)
-    if any(word in domain for word in ["tempmail", "mailinator", "guerrillamail", "10minutemail", "dispostable", "trashmail", "sharklasers"]):
+    # Step 5: Keyword-based temporary detection
+    temp_patterns = [
+        "tempmail", "mailinator", "guerrillamail", "10minutemail",
+        "dispostable", "trashmail", "sharklasers", "fakemail",
+        "yopmail", "fakeinbox"
+    ]
+    if any(word in domain for word in temp_patterns):
         return jsonify({
             "email": email,
             "domain": domain,
             "valid": False,
-            "reason": "Temporary mail pattern detected"
+            "reason": "Temporary email detected"
         })
 
+    # Step 6: Genuine email
     return jsonify({
         "email": email,
         "domain": domain,
