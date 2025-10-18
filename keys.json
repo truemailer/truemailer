@@ -1,0 +1,7 @@
+{
+  "demo": {
+    "key": "demo_key_123",
+    "expiry": 4102444800,
+    "limit": 100
+  }
+}
