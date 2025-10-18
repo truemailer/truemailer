@@ -8,3 +8,10 @@ httpx
 requests
 jinja2
 python-dotenv
+fastapi
+uvicorn
+httpx
+requests
+jinja2
+python-dotenv
+email-validator
