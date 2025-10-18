@@ -7,7 +7,7 @@
 ---
 
 ## 🌍 API Base
-`https://your-app-name.onrender.com`
+`https://truemailer-api.onrender.com/`
 
 ---
 
