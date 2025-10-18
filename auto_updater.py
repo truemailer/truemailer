@@ -9,10 +9,8 @@ def auto_update():
         print("🔄 Updating public list & keys…")
         bl = requests.get(DATA_URL, timeout=30)
         if bl.status_code == 200:
-            # save raw text to blocklist/blocklist.txt
             os.makedirs("blocklist", exist_ok=True)
             open("blocklist/blocklist.txt","w",encoding="utf-8").write(bl.text)
-        # keys.json (optional)
         k = requests.get(KEYS_URL, timeout=30)
         if k.status_code == 200:
             try:
