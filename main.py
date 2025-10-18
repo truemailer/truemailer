@@ -1,3 +1,5 @@
+from fastapi.middleware.cors import CORSMiddleware
+
 import json
 import re
 import requests
@@ -16,6 +18,14 @@ from flask import Flask, request, jsonify
 # -----------------------------------------------------------
 
 app = Flask(__name__)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # or ["https://your-github-username.github.io"]
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Load Configuration
 with open("config.json", "r") as f:
