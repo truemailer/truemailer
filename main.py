@@ -1,127 +1,74 @@
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-
-import json
 import re
-import requests
-from flask import Flask, request, jsonify
+import json
+import httpx
 
-# -----------------------------------------------------------
-# Truemailer API — Final Stable Version (Render + Cloudflare)
-# -----------------------------------------------------------
-# Author: Ashish
-# Description:
-# This API verifies emails by:
-# - Checking syntax validity
-# - Using allowlist and blocklist
-# - Matching against GitHub remote blocklist-data
-# - Filtering temporary/disposable patterns
-# -----------------------------------------------------------
+app = FastAPI()
 
-app = Flask(__name__)
-
+# --- ✅ CORS so frontend UI (GitHub Pages) can call Render API ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # or ["https://your-github-username.github.io"]
+    allow_origins=["*"],  # You can later restrict to your domain
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Load Configuration
-with open("config.json", "r") as f:
-    CONFIG = json.load(f)
+# --- Load local blocklists / allowlists ---
+try:
+    with open("allowlist.json", "r") as f:
+        allowlist = json.load(f)
+except:
+    allowlist = {"domains": ["zoho.in", "proton.me", "gmail.com", "outlook.com"]}
 
-# Load Blocklist and Allowlist
-def load_json_file(filename):
+# Simple known disposable patterns
+TEMP_PATTERNS = [
+    "tempmail", "guerrillamail", "10minutemail", "mailinator",
+    "fakeinbox", "trashmail", "getnada", "yopmail", "sharklasers",
+    "maildrop", "dispostable", "instantemailaddress", "spamgourmet",
+]
+
+@app.get("/")
+async def home():
+    return {"message": "Truemailer API is running successfully", "project": "Truemailer", "status": "Active"}
+
+@app.post("/")
+async def check_email(request: Request):
     try:
-        with open(filename, "r") as f:
-            return set(json.load(f))
-    except Exception:
-        return set()
+        data = await request.json()
+        email = data.get("email", "").strip().lower()
+        if not email or "@" not in email:
+            return {"valid": False, "is_disposable": True, "reason": "Invalid email format", "email": email}
 
-ALLOWLIST = load_json_file("allowlist.json")
-BLOCKLIST = load_json_file("blocklist.json")
+        domain = email.split("@")[-1]
 
-# Email validation regex
-EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+        # --- ✅ Allowlist override ---
+        if domain in allowlist.get("domains", []):
+            return {"valid": True, "is_disposable": False, "reason": "Allowlisted domain", "email": email}
 
+        # --- Check for obvious disposable patterns ---
+        for p in TEMP_PATTERNS:
+            if p in domain:
+                return {"valid": False, "is_disposable": True, "reason": f"Disposable domain pattern: {p}", "email": email}
 
-@app.route("/")
-def index():
-    return jsonify({
-        "project": CONFIG.get("project_name", "Truemailer"),
-        "status": "Active",
-        "message": "Truemailer API is running successfully"
-    })
+        # --- External disposable API fallback ---
+        async with httpx.AsyncClient(timeout=5) as client:
+            try:
+                res = await client.get(f"https://open.kickbox.com/v1/disposable/{domain}")
+                if res.status_code == 200:
+                    data = res.json()
+                    if data.get("disposable"):
+                        return {"valid": False, "is_disposable": True, "reason": "Disposable (Kickbox list)", "email": email}
+            except Exception:
+                pass
 
+        # --- MX check ---
+        if not re.search(r"\.[a-z]{2,}$", domain):
+            return {"valid": False, "is_disposable": True, "reason": "Invalid domain structure", "email": email}
 
-@app.route("/verify", methods=["POST"])
-def verify_email():
-    data = request.get_json()
-    if not data or "email" not in data:
-        return jsonify({"error": "email required"}), 400
+        # --- Default: considered valid ---
+        return {"valid": True, "is_disposable": False, "reason": "Valid", "email": email}
 
-    email = data["email"].lower().strip()
-
-    # Step 1: Syntax check
-    if not EMAIL_PATTERN.match(email):
-        return jsonify({"email": email, "valid": False, "reason": "Invalid format"})
-
-    domain = email.split("@")[1]
-
-    # Step 2: Allowlist check
-    if domain in ALLOWLIST:
-        return jsonify({
-            "email": email,
-            "domain": domain,
-            "valid": True,
-            "reason": "Allowed domain"
-        })
-
-    # Step 3: Blocklist check (local)
-    if domain in BLOCKLIST:
-        return jsonify({
-            "email": email,
-            "domain": domain,
-            "valid": False,
-            "reason": "Blocked domain (local)"
-        })
-
-    # Step 4: Remote GitHub blocklist lookup
-    try:
-        resp = requests.get(CONFIG["blocklist_source"], timeout=5)
-        if resp.status_code == 200 and domain in resp.text.lower():
-            return jsonify({
-                "email": email,
-                "domain": domain,
-                "valid": False,
-                "reason": "Blocked domain (remote)"
-            })
-    except Exception:
-        pass
-
-    # Step 5: Keyword-based temporary detection
-    temp_patterns = [
-        "tempmail", "mailinator", "guerrillamail", "10minutemail",
-        "dispostable", "trashmail", "sharklasers", "fakemail",
-        "yopmail", "fakeinbox"
-    ]
-    if any(word in domain for word in temp_patterns):
-        return jsonify({
-            "email": email,
-            "domain": domain,
-            "valid": False,
-            "reason": "Temporary email detected"
-        })
-
-    # Step 6: Genuine email
-    return jsonify({
-        "email": email,
-        "domain": domain,
-        "valid": True,
-        "reason": "Genuine domain"
-    })
-
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080)
+    except Exception as e:
+        return {"valid": False, "is_disposable": True, "reason": f"Error: {str(e)}", "email": None}
