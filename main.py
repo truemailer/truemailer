@@ -1,74 +1,78 @@
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-import re
 import json
-import httpx
+import requests
 
-app = FastAPI()
+app = FastAPI(title="TrueMailer API")
 
-# --- ✅ CORS so frontend UI (GitHub Pages) can call Render API ---
+# ✅ Allow CORS for UI
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # You can later restrict to your domain
-    allow_credentials=True,
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --- Load local blocklists / allowlists ---
-try:
-    with open("allowlist.json", "r") as f:
-        allowlist = json.load(f)
-except:
-    allowlist = {"domains": ["zoho.in", "proton.me", "gmail.com", "outlook.com"]}
+# ✅ Load lists
+def load_list(filename):
+    try:
+        with open(filename, "r") as f:
+            return set(line.strip().lower() for line in f if line.strip())
+    except FileNotFoundError:
+        return set()
 
-# Simple known disposable patterns
-TEMP_PATTERNS = [
-    "tempmail", "guerrillamail", "10minutemail", "mailinator",
-    "fakeinbox", "trashmail", "getnada", "yopmail", "sharklasers",
-    "maildrop", "dispostable", "instantemailaddress", "spamgourmet",
-]
+blocklist = load_list("blocklist.txt")
+allowlist = load_list("allowlist.txt")
 
+# ✅ Health check
 @app.get("/")
 async def home():
-    return {"message": "Truemailer API is running successfully", "project": "Truemailer", "status": "Active"}
+    return {
+        "message": "Truemailer API is running successfully",
+        "project": "TrueMailer",
+        "status": "Active ✅",
+        "pricing": {
+            "Free": "50 verifications/day",
+            "Starter": "₹199/month - 2,000 verifications",
+            "Pro": "₹499/month - 10,000 verifications + priority API",
+        },
+    }
 
-@app.post("/")
-async def check_email(request: Request):
+# ✅ Email validation endpoint
+@app.post("/verify")
+async def verify_email(request: Request):
+    data = await request.json()
+    email = data.get("email")
+
+    if not email:
+        return JSONResponse({"error": "email required"}, status_code=400)
+
+    domain = email.split("@")[-1].lower()
+
+    # ✅ Allowlist first
+    if domain in allowlist:
+        return {"email": email, "valid": True, "reason": "Domain in allowlist"}
+
+    # ✅ Blocklist next
+    if domain in blocklist:
+        return {"email": email, "valid": False, "reason": "Disposable domain blocked"}
+
+    # ✅ External check fallback (for accuracy)
     try:
-        data = await request.json()
-        email = data.get("email", "").strip().lower()
-        if not email or "@" not in email:
-            return {"valid": False, "is_disposable": True, "reason": "Invalid email format", "email": email}
+        resp = requests.get(f"https://truemailer-api.onrender.com/check/{domain}", timeout=5)
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get("disposable") is True:
+                return {"email": email, "valid": False, "reason": "Detected via external source"}
+    except Exception:
+        pass
 
-        domain = email.split("@")[-1]
+    return {"email": email, "valid": True, "reason": "Looks good"}
 
-        # --- ✅ Allowlist override ---
-        if domain in allowlist.get("domains", []):
-            return {"valid": True, "is_disposable": False, "reason": "Allowlisted domain", "email": email}
-
-        # --- Check for obvious disposable patterns ---
-        for p in TEMP_PATTERNS:
-            if p in domain:
-                return {"valid": False, "is_disposable": True, "reason": f"Disposable domain pattern: {p}", "email": email}
-
-        # --- External disposable API fallback ---
-        async with httpx.AsyncClient(timeout=5) as client:
-            try:
-                res = await client.get(f"https://open.kickbox.com/v1/disposable/{domain}")
-                if res.status_code == 200:
-                    data = res.json()
-                    if data.get("disposable"):
-                        return {"valid": False, "is_disposable": True, "reason": "Disposable (Kickbox list)", "email": email}
-            except Exception:
-                pass
-
-        # --- MX check ---
-        if not re.search(r"\.[a-z]{2,}$", domain):
-            return {"valid": False, "is_disposable": True, "reason": "Invalid domain structure", "email": email}
-
-        # --- Default: considered valid ---
-        return {"valid": True, "is_disposable": False, "reason": "Valid", "email": email}
-
-    except Exception as e:
-        return {"valid": False, "is_disposable": True, "reason": f"Error: {str(e)}", "email": None}
+# ✅ Optional GET check
+@app.get("/check/{domain}")
+async def check_domain(domain: str):
+    domain = domain.lower()
+    disposable = domain in blocklist
+    return {"domain": domain, "disposable": disposable}
