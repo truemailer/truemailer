@@ -2,8 +2,8 @@ fastapi
 uvicorn
 dnspython
 pydantic
-requests
 aiohttp
-Flask
 flask-cors
 gunicorn
+Flask==3.0.3
+requests==2.32.3
