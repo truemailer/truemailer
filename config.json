@@ -1,15 +1,8 @@
 {
-  "require_api_key": true,
-  "rate_limit_per_day": 100,
-  "trusted_providers": [
-    "gmail.com","googlemail.com","outlook.com","hotmail.com","yahoo.com",
-    "icloud.com","protonmail.com","zoho.com","mail.com","yandex.com"
-  ],
-  "remote_blocklist_urls": [
-    "https://raw.githubusercontent.com/disposable-email-domains/disposable-email-domains/master/domains.txt",
-    "https://raw.githubusercontent.com/ivolo/disposable-email-domains/master/index.json",
-    "https://raw.githubusercontent.com/andreis/disposable-email-domains/master/domains.txt"
-  ],
-  "pattern_suspicious": ["mail", "inbox", "temp", "trash", "shark", "gta5", "forex"],
-  "mx_check_enabled": true
+  "api_keys": [
+    "public-demo-key",
+    "client-001-key",
+    "client-002-key",
+    "client-003-key"
+  ]
 }
