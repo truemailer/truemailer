@@ -1,7 +1,9 @@
-fastapi
-uvicorn
+fastapi==0.99.2
+uvicorn==0.23.2
+httpx==0.24.1
+pydantic==2.5.1
+
 dnspython
-pydantic
 aiohttp
 flask-cors
 gunicorn
