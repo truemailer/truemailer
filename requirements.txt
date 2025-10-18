@@ -1,11 +1,4 @@
-fastapi==0.99.2
-uvicorn==0.23.2
-httpx==0.24.1
-pydantic==2.5.1
-
-dnspython
-aiohttp
-flask-cors
-gunicorn
-Flask==3.0.3
-requests==2.32.3
+fastapi>=0.115.6
+uvicorn==0.30.3
+requests
+python-dotenv
