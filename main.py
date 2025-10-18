@@ -1,139 +1,95 @@
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
-import os, re, json, aiohttp
+import json
+import re
+import requests
+from flask import Flask, request, jsonify
 
-app = FastAPI(title="Truemailer API Edge", version="3.0")
+app = Flask(__name__)
 
-# CORS setup
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Load configuration
+with open("config.json", "r") as f:
+    CONFIG = json.load(f)
 
-# Load files
-def load_list(filename):
-    if not os.path.exists(filename):
-        return set()
-    with open(filename, "r", encoding="utf-8") as f:
-        lines = [line.strip().lower() for line in f if line.strip() and not line.startswith("#")]
-    return set(lines)
+# Load blocklist and allowlist
+try:
+    with open("blocklist.json", "r") as f:
+        BLOCKLIST = set(json.load(f))
+except:
+    BLOCKLIST = set()
 
-blocklist = load_list("blocklist-data/blocklist.txt")
-suspicious_tlds = load_list("blocklist-data/suspicious_tlds.txt")
-disposable_providers = load_list("blocklist-data/disposable_providers.txt")
+try:
+    with open("allowlist.json", "r") as f:
+        ALLOWLIST = set(json.load(f))
+except:
+    ALLOWLIST = set()
 
-# Allowlist
-allowlist = set()
-if os.path.exists("allowlist.json"):
-    with open("allowlist.json", "r", encoding="utf-8") as f:
-        allowlist = set(json.load(f))
+# Basic email pattern
+EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
-# Config file with allowed API keys
-if os.path.exists("config.json"):
-    with open("config.json", "r", encoding="utf-8") as f:
-        config = json.load(f)
-        API_KEYS = set(config.get("api_keys", []))
-else:
-    API_KEYS = {"public-demo-key"}
+@app.route("/")
+def index():
+    return jsonify({"status": "OK", "message": "Truemailer API live"})
 
-EMAIL_REGEX = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
+@app.route("/verify", methods=["POST"])
+def verify_email():
+    data = request.get_json()
+    if not data or "email" not in data:
+        return jsonify({"error": "email required"}), 400
 
-@app.get("/")
-async def root():
-    return {"service": "Truemailer API Edge", "status": "Running ✅", "source": "Render + Cloudflare"}
+    email = data["email"].lower().strip()
+    if not EMAIL_PATTERN.match(email):
+        return jsonify({"valid": False, "reason": "Invalid email format"})
 
-@app.get("/verify")
-async def verify_email(request: Request):
-    api_key = request.headers.get("x-api-key")
-    if not api_key or api_key not in API_KEYS:
-        return JSONResponse({"error": "Invalid or missing API key"}, status_code=403)
-
-    email = request.query_params.get("email")
-    if not email:
-        return JSONResponse({"error": "email required"}, status_code=400)
-
-    email = email.strip().lower()
-    if not EMAIL_REGEX.match(email):
-        return JSONResponse({"email": email, "valid_format": False, "is_disposable": True})
-
-    domain = email.split("@")[-1]
+    domain = email.split("@")[1]
 
     # Allowlist check
-    if domain in allowlist:
-        return JSONResponse({
+    if domain in ALLOWLIST:
+        return jsonify({
             "email": email,
             "domain": domain,
-            "valid_format": True,
-            "is_disposable": False,
-            "reason": "Domain in allowlist ✅"
+            "valid": True,
+            "reason": "Domain in allowlist"
         })
 
     # Blocklist check
-    if domain in blocklist:
-        return JSONResponse({
+    if domain in BLOCKLIST:
+        return jsonify({
             "email": email,
             "domain": domain,
-            "valid_format": True,
-            "is_disposable": True,
-            "reason": "Domain found in blocklist 🚫"
+            "valid": False,
+            "reason": "Temporary or blocked domain"
         })
 
-    # Suspicious or disposable pattern
-    tld = domain.split(".")[-1]
-    if tld in suspicious_tlds or any(x in domain for x in disposable_providers):
-        return JSONResponse({
-            "email": email,
-            "domain": domain,
-            "valid_format": True,
-            "is_disposable": True,
-            "reason": "Disposable/suspicious domain ⚠️"
-        })
-
-    # Rotating pattern (random daily domains)
-    if re.search(r"[a-z0-9]{8,}\.(xyz|fun|info|live|site|icu)$", domain):
-        return JSONResponse({
-            "email": email,
-            "domain": domain,
-            "valid_format": True,
-            "is_disposable": True,
-            "reason": "Likely daily generated domain ⚙️"
-        })
-
-    # DNS check
+    # Remote check via GitHub Blocklist Data (Verifalia-style)
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(f"https://dns.google/resolve?name={domain}&type=MX") as r:
-                data = await r.json()
-                if "Answer" not in data:
-                    return JSONResponse({
-                        "email": email,
-                        "domain": domain,
-                        "valid_format": True,
-                        "is_disposable": True,
-                        "reason": "No MX record found ❌"
-                    })
+        gh_data = requests.get(
+            CONFIG["blocklist_source"], timeout=5
+        ).text.lower()
+        if domain in gh_data:
+            return jsonify({
+                "email": email,
+                "domain": domain,
+                "valid": False,
+                "reason": "Detected in blocklist-data"
+            })
     except Exception:
         pass
 
-    return JSONResponse({
+    # Generic pattern-based detection (for tempmail)
+    if any(word in domain for word in ["tempmail", "mailinator", "guerrillamail", "10minutemail", "dispostable", "trashmail", "sharklasers"]):
+        return jsonify({
+            "email": email,
+            "domain": domain,
+            "valid": False,
+            "reason": "Temporary mail pattern detected"
+        })
+
+    return jsonify({
         "email": email,
         "domain": domain,
-        "valid_format": True,
-        "is_disposable": False,
-        "reason": "Clean domain ✅"
+        "valid": True,
+        "reason": "Genuine domain"
     })
 
 
-@app.get("/status")
-async def status():
-    return {
-        "status": "Operational ✅",
-        "version": "3.0",
-        "allowlist_count": len(allowlist),
-        "blocklist_count": len(blocklist),
-        "active_keys": len(API_KEYS)
-    }
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8080)
