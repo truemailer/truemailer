@@ -1,8 +1,6 @@
 {
-  "api_keys": [
-    "public-demo-key",
-    "client-001-key",
-    "client-002-key",
-    "client-003-key"
-  ]
+  "project_name": "Truemailer",
+  "owner": "Ashish",
+  "api_key": "YOUR_SECRET_API_KEY",
+  "blocklist_source": "https://raw.githubusercontent.com/truemailer/blocklist-data/main/blocklist.json"
 }
